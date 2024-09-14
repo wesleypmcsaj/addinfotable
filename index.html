@@ -49,12 +49,13 @@
             codeReader.decodeFromVideoDevice(null, videoElement, (result, err) => {
                 if (result) {
                     let qrContent = result.text;
+                    console.log("QR Code content: ", qrContent); // Verifique se o QR code foi capturado corretamente
                     messageElement.textContent = `QR Code detected: ${qrContent}`;
                     
                     // Verifica se o QR code já foi escaneado antes
                     if (!scannedCodes.has(qrContent)) {
                         scannedCodes.add(qrContent);
-                        sendToGoogleSheets(qrContent);
+                        sendToWebhook(qrContent);  // Troquei para testar no webhook.site
                     } else {
                         messageElement.textContent = `QR Code already scanned: ${qrContent}`;
                     }
@@ -71,21 +72,25 @@
             messageElement.textContent = 'Camera stopped';
         });
 
-        // Função para enviar o conteúdo do QR code para o Google App Script
-        function sendToGoogleSheets(qrData) {
+        // Função para enviar o conteúdo do QR code para o webhook.site
+        function sendToWebhook(qrData) {
+            // Testando com um dado fixo
+            const testPayload = JSON.stringify({data: qrData || "Teste de QR code"});
+
             fetch('	https://webhook.site/dc5046be-1c13-427a-92c5-8fa45edd931c', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({data: qrData})
+                body: testPayload
             }).then(response => response.text())
             .then(result => {
-                messageElement.textContent = `QR Code sent to Google Sheets: ${qrData}`;
+                console.log('Dados enviados:', testPayload);
+                messageElement.textContent = `QR Code sent to Webhook: ${qrData}`;
                 console.log(result);
             }).catch(error => {
                 console.error('Error:', error);
-                messageElement.textContent = 'Error sending data to Google Sheets';
+                messageElement.textContent = 'Error sending data to Webhook';
             });
         }
 
