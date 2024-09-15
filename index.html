@@ -1,107 +1,73 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-br">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR Code Reader</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 0;
-            padding: 0;
-            background-color: #f4f4f4;
-        }
-        video {
-            width: 100%;
-            max-width: 400px;
-            margin: 20px auto;
-            display: block;
-        }
-        #message {
-            margin: 20px;
-            font-size: 1.2em;
-        }
-        button {
-            background-color: #4CAF50;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            cursor: pointer;
-        }
-    </style>
+    <title>QR Code Scanner</title>
+    <script src="https://unpkg.com/@zxing/library@latest"></script>
 </head>
 <body>
     <h1>QR Code Scanner</h1>
-    <video id="video" playsinline></video>
-    <p id="message">Point the camera at a QR Code</p>
-    <button id="stopButton">Stop Camera</button>
+    <video id="video" width="100%" height="auto" style="border: 1px solid black;"></video>
+    <div id="result"></div>
+    <div id="debug"></div> <!-- Adiciona uma nova div para exibir mensagens de depuração -->
 
-    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@zxing/library@0.18.6/umd/index.min.js"></script>
     <script>
         const codeReader = new ZXing.BrowserQRCodeReader();
         const videoElement = document.getElementById('video');
-        const messageElement = document.getElementById('message');
-        let scannedCodes = new Set(); // Usado para armazenar QR Codes já escaneados
+        const resultElement = document.getElementById('result');
+        const debugElement = document.getElementById('debug'); // Seleciona o elemento de depuração
 
-        // Função para iniciar a câmera traseira do celular
-        function startCamera() {
-            codeReader.decodeFromVideoDevice(null, videoElement, (result, err) => {
+        // Função para exibir mensagens de depuração
+        function logDebug(message) {
+            const p = document.createElement('p');
+            p.textContent = message;
+            debugElement.appendChild(p);
+        }
+
+        codeReader
+            .decodeFromVideoDevice(null, videoElement, (result, error) => {
                 if (result) {
-                    let qrContent = result.text;
-                    console.log("QR Code content: ", qrContent); // Verifique se o QR code foi capturado corretamente
-                    messageElement.textContent = `QR Code detected: ${qrContent}`;
-                    
-                    // Verifica se o QR code já foi escaneado antes
-                    if (!scannedCodes.has(qrContent)) {
-                        scannedCodes.add(qrContent);
-                        sendToWebhook(qrContent);  // Teste de envio para o webhook
-                    } else {
-                        messageElement.textContent = `QR Code already scanned: ${qrContent}`;
-                    }
+                    const qrData = result.text;
+                    resultElement.innerText = `QR Code lido: ${qrData}`;
+                    logDebug(`Dados lidos do QR Code: ${qrData}`);
+
+                    // Enviar dados para o Webhook.site
+                    fetch('https://script.google.com/macros/s/AKfycbwDUdyK57Fl3HNwgPaXeOJdL3LscojrjEXS4jNlhgXKCp9fsWSFPQdEsAEGPJHs6jil/exec', {  // Substitua pela URL fornecida pelo Webhook.site
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ data: qrData }),
+                    })
+                    .then(response => {
+                        logDebug(`Resposta recebida do servidor: ${response.status}`);
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (data.success) {
+                            resultElement.innerText += ` - ${data.message}`;
+                            logDebug(`Resposta de sucesso: ${data.message}`);
+                        } else {
+                            resultElement.innerText += ` - Erro: ${data.message}`;
+                            logDebug(`Erro recebido: ${data.message}`);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Erro ao enviar dados:', error);
+                        resultElement.innerText += " - Erro ao enviar dados para o servidor.";
+                        logDebug(`Erro ao enviar dados: ${error.message}`);
+                    });
                 }
-                if (err && !(err instanceof ZXing.NotFoundException)) {
-                    console.error(err);
+                if (error) {
+                    console.error(error);
+                    logDebug(`Erro na leitura do QR Code: ${error.message}`);
                 }
-            });
-        }
-
-        // Função para parar a leitura do QR code e câmera
-        document.getElementById('stopButton').addEventListener('click', () => {
-            codeReader.reset();
-            messageElement.textContent = 'Camera stopped';
-        });
-
-        // Função para enviar o conteúdo do QR code para o webhook.site
-        function sendToWebhook(qrData) {
-            // Verifique o dado que será enviado
-            console.log('Enviando dado para o Webhook: ', qrData);
-
-            // Prepare o payload como JSON
-            const testPayload = JSON.stringify({ data: qrData });
-
-            fetch('https://script.google.com/macros/s/AKfycbwDUdyK57Fl3HNwgPaXeOJdL3LscojrjEXS4jNlhgXKCp9fsWSFPQdEsAEGPJHs6jil/exec', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: testPayload
             })
-            .then(response => response.text())
-            .then(result => {
-                console.log('Resposta do Webhook:', result);
-                messageElement.textContent = `QR Code sent to Webhook: ${qrData}`;
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                messageElement.textContent = 'Error sending data to Webhook';
+            .catch(err => {
+                console.error(err);
+                logDebug(`Erro ao iniciar a leitura do QR Code: ${err.message}`);
             });
-        }
-
-        // Iniciar a câmera ao carregar a página
-        window.addEventListener('load', () => {
-            startCamera();
-        });
     </script>
 </body>
 </html>
