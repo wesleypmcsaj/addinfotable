@@ -1,73 +1,97 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR Code Scanner</title>
-    <script src="https://unpkg.com/@zxing/library@latest"></script>
+    <title>QR Code Reader</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+        video {
+            width: 100%;
+            max-width: 400px;
+            margin: 20px auto;
+            display: block;
+        }
+        #message {
+            margin: 20px;
+            font-size: 1.2em;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body>
     <h1>QR Code Scanner</h1>
-    <video id="video" width="100%" height="auto" style="border: 1px solid black;"></video>
-    <div id="result"></div>
-    <div id="debug"></div> <!-- Adiciona uma nova div para exibir mensagens de depuração -->
+    <video id="video" playsinline></video>
+    <p id="message">Point the camera at a QR Code</p>
+    <button id="stopButton">Stop Camera</button>
 
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@zxing/library@0.18.6/umd/index.min.js"></script>
     <script>
         const codeReader = new ZXing.BrowserQRCodeReader();
         const videoElement = document.getElementById('video');
-        const resultElement = document.getElementById('result');
-        const debugElement = document.getElementById('debug'); // Seleciona o elemento de depuração
+        const messageElement = document.getElementById('message');
+        let scannedCodes = new Set(); // Usado para armazenar QR Codes já escaneados
 
-        // Função para exibir mensagens de depuração
-        function logDebug(message) {
-            const p = document.createElement('p');
-            p.textContent = message;
-            debugElement.appendChild(p);
+        // Função para iniciar a câmera traseira do celular
+        function startCamera() {
+            codeReader.decodeFromVideoDevice(null, videoElement, (result, err) => {
+                if (result) {
+                    let qrContent = result.text;
+                    messageElement.textContent = `QR Code detected: ${qrContent}`;
+
+                    // Verifica se o QR code já foi escaneado antes
+                    if (!scannedCodes.has(qrContent)) {
+                        scannedCodes.add(qrContent);
+                        sendToGoogleSheets(qrContent);
+                    } else {
+                        messageElement.textContent = `QR Code already scanned: ${qrContent}`;
+                    }
+                }
+                if (err && !(err instanceof ZXing.NotFoundException)) {
+                    console.error(err);
+                }
+            });
         }
 
-        codeReader
-            .decodeFromVideoDevice(null, videoElement, (result, error) => {
-                if (result) {
-                    const qrData = result.text;
-                    resultElement.innerText = `QR Code lido: ${qrData}`;
-                    logDebug(`Dados lidos do QR Code: ${qrData}`);
+        // Função para parar a leitura do QR code e câmera
+        document.getElementById('stopButton').addEventListener('click', () => {
+            codeReader.reset();
+            messageElement.textContent = 'Camera stopped';
+        });
 
-                    // Enviar dados para o Webhook.site
-                    fetch('https://script.google.com/macros/s/AKfycbwDUdyK57Fl3HNwgPaXeOJdL3LscojrjEXS4jNlhgXKCp9fsWSFPQdEsAEGPJHs6jil/exec', {  // Substitua pela URL fornecida pelo Webhook.site
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ data: qrData }),
-                    })
-                    .then(response => {
-                        logDebug(`Resposta recebida do servidor: ${response.status}`);
-                        return response.json();
-                    })
-                    .then(data => {
-                        if (data.success) {
-                            resultElement.innerText += ` - ${data.message}`;
-                            logDebug(`Resposta de sucesso: ${data.message}`);
-                        } else {
-                            resultElement.innerText += ` - Erro: ${data.message}`;
-                            logDebug(`Erro recebido: ${data.message}`);
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Erro ao enviar dados:', error);
-                        resultElement.innerText += " - Erro ao enviar dados para o servidor.";
-                        logDebug(`Erro ao enviar dados: ${error.message}`);
-                    });
-                }
-                if (error) {
-                    console.error(error);
-                    logDebug(`Erro na leitura do QR Code: ${error.message}`);
-                }
-            })
-            .catch(err => {
-                console.error(err);
-                logDebug(`Erro ao iniciar a leitura do QR Code: ${err.message}`);
+        // Função para enviar o conteúdo do QR code para a planilha Google
+        function sendToGoogleSheets(qrData) {
+            fetch('https://script.google.com/macros/s/AKfycbywu84_rxzcVA66XTZnZbjJ3Y7GSunwNzkHsimD2u8/exec', {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({data: qrData})
+            }).then(() => {
+                messageElement.textContent = `QR Code sent to Google Sheets: ${qrData}`;
+            }).catch(error => {
+                console.error('Error:', error);
+                messageElement.textContent = 'Error sending data to Google Sheets';
             });
+        }
+
+        // Iniciar a câmera ao carregar a página
+        window.addEventListener('load', () => {
+            startCamera();
+        });
     </script>
 </body>
 </html>
