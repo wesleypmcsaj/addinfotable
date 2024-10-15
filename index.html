@@ -3,94 +3,80 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR Code Reader</title>
+    <title>QR Code Scanner</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 0;
-            padding: 0;
-            background-color: #f4f4f4;
-        }
-        video {
+        #video {
             width: 100%;
-            max-width: 400px;
-            margin: 20px auto;
-            display: block;
+            height: auto;
         }
-        #message {
-            margin: 20px;
-            font-size: 1.2em;
-        }
-        button {
-            background-color: #4CAF50;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            cursor: pointer;
+        #result {
+            margin-top: 20px;
+            font-size: 18px;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
     <h1>QR Code Scanner</h1>
-    <video id="video" playsinline></video>
-    <p id="message">Point the camera at a QR Code</p>
-    <button id="stopButton">Stop Camera</button>
+    <video id="video" autoplay></video>
+    <div id="result">Scan a QR code...</div>
 
-    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@zxing/library@0.18.6/umd/index.min.js"></script>
+    <script src="https://unpkg.com/@zxing/library@latest"></script>
     <script>
-        const codeReader = new ZXing.BrowserQRCodeReader();
-        const videoElement = document.getElementById('video');
-        const messageElement = document.getElementById('message');
-        let scannedCodes = new Set(); // Usado para armazenar QR Codes já escaneados
+        // Função para inicializar o scanner QR com a câmera traseira
+        function startQrScanner() {
+            const codeReader = new ZXing.BrowserQRCodeReader();
+            const videoElement = document.getElementById('video');
 
-        // Função para iniciar a câmera traseira do celular
-        function startCamera() {
-            codeReader.decodeFromVideoDevice(null, videoElement, (result, err) => {
-                if (result) {
-                    let qrContent = result.text;
-                    messageElement.textContent = `QR Code detected: ${qrContent}`;
+            // Procurar e usar a câmera traseira
+            codeReader.getVideoInputDevices()
+                .then(videoInputDevices => {
+                    const rearCamera = videoInputDevices.find(device => device.label.toLowerCase().includes('back'));
 
-                    // Verifica se o QR code já foi escaneado antes
-                    if (!scannedCodes.has(qrContent)) {
-                        scannedCodes.add(qrContent);
-                        sendToGoogleSheets(qrContent);
+                    if (rearCamera) {
+                        // Start scanning with the back camera
+                        codeReader.decodeFromVideoDevice(rearCamera.deviceId, 'video', (result, err) => {
+                            if (result) {
+                                document.getElementById('result').textContent = `QR Code: ${result.text}`;
+                                enviarQrData(result.text);  // Enviar os dados para o Google Apps Script
+                            }
+                            if (err && !(err instanceof ZXing.NotFoundException)) {
+                                console.error(err);
+                            }
+                        });
                     } else {
-                        messageElement.textContent = `QR Code already scanned: ${qrContent}`;
+                        console.error('Nenhuma câmera traseira encontrada');
                     }
-                }
-                if (err && !(err instanceof ZXing.NotFoundException)) {
+                })
+                .catch(err => {
                     console.error(err);
-                }
-            });
+                });
         }
 
-        // Função para parar a leitura do QR code e câmera
-        document.getElementById('stopButton').addEventListener('click', () => {
-            codeReader.reset();
-            messageElement.textContent = 'Camera stopped';
-        });
+        // Função para enviar dados lidos para o Google Apps Script
+        function enviarQrData(qrData) {
+            const url = 'https://script.google.com/macros/s/AKfycbzNL97Op-T_Zks_iLn7EgJV6nL0WBIiJEToRdEfi9rNsCAkGDJ_Z96jOtUuzYv8SWI/exec';  // Substitua pela URL do seu Google Apps Script
+            const dados = { data: qrData };
 
-        // Função para enviar o conteúdo do QR code para a planilha Google
-        function sendToGoogleSheets(qrData) {
-            fetch('https://script.google.com/macros/s/AKfycbywu84_rxzcVA66XTZnZbjJ3Y7GSunwNzkHsimD2u8/exec', {
+            fetch(url, {
                 method: 'POST',
-                mode: 'no-cors',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({data: qrData})
-            }).then(() => {
-                messageElement.textContent = `QR Code sent to Google Sheets: ${qrData}`;
-            }).catch(error => {
-                console.error('Error:', error);
-                messageElement.textContent = 'Error sending data to Google Sheets';
+                body: JSON.stringify(dados),
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Resposta do servidor:', data);
+            })
+            .catch(error => {
+                console.error('Erro ao enviar dados:', error);
             });
         }
 
-        // Iniciar a câmera ao carregar a página
+        // Inicializar o scanner ao carregar a página
         window.addEventListener('load', () => {
-            startCamera();
+            startQrScanner();
         });
     </script>
 </body>
